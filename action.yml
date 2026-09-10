@@ -1,0 +1,125 @@
+name: 'Sync generated code from an OpenAPI spec'
+description: |
+  Regenerates code from a producer's OpenAPI spec and opens (or updates) a
+  pull request when the generated output changes. Meant to be called from a
+  workflow triggered by a `repository_dispatch` sent from the producer repo.
+author: 'Hayato Kawai'
+branding:
+  icon: 'refresh-cw'
+  color: 'blue'
+
+inputs:
+  producer-repo:
+    description: |
+      Producer GitHub repository in `owner/repo` form (e.g.
+      `your-org/producer-repo`). Determines the sync branch name and the
+      pull request title/body/link — see README.
+    required: true
+  generate-command:
+    description: |
+      Shell command that regenerates and formats code from the producer's
+      spec. Runs at the repository root after checkout; include any
+      toolchain setup (installing dependencies, etc.) the command needs.
+      Written by whoever authors the calling workflow — the same trust level
+      as any other `run:` step, not runtime/external input.
+    required: true
+  octo-sts-identity:
+    description: |
+      octo-sts identity used to federate a token scoped to this repository
+      (`domain: octo-sts.fohte.net`). The federated token needs
+      `contents: write` and `pull_requests: write`.
+    required: true
+
+outputs:
+  changed:
+    description: |
+      `'true'` if `generate-command` produced a diff, `'false'` otherwise.
+    value: ${{ steps.diff.outputs.changed }}
+  pull-request-url:
+    description: |
+      URL of the created or updated pull request. Empty when `changed` is
+      `'false'`.
+    value: ${{ steps.pr.outputs.url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Federate GitHub token via octo-sts
+      id: octo-sts
+      uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
+      with:
+        scope: ${{ github.repository }}
+        identity: ${{ inputs.octo-sts-identity }}
+        domain: octo-sts.fohte.net
+
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        token: ${{ steps.octo-sts.outputs.token }}
+
+    - name: Resolve sync branch and pull request text
+      id: meta
+      shell: bash
+      env:
+        PRODUCER_REPO: ${{ inputs.producer-repo }}
+      run: |
+        set -euo pipefail
+        {
+          echo "branch=spec-sync-${PRODUCER_REPO//\//-}"
+          echo "title=chore: sync generated code from ${PRODUCER_REPO} OpenAPI spec"
+          echo "body=Regenerated code from the latest [${PRODUCER_REPO} OpenAPI spec](https://github.com/${PRODUCER_REPO}/blob/main/openapi.json)."
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Run generate command
+      shell: bash
+      env:
+        # Pass via env to prevent command text from breaking out of the script.
+        GENERATE_COMMAND: ${{ inputs.generate-command }}
+      run: eval "$GENERATE_COMMAND"
+
+    - name: Check for changes
+      id: diff
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "$(git status --porcelain)" ]; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Commit and push changes
+      if: steps.diff.outputs.changed == 'true'
+      shell: bash
+      env:
+        BRANCH: ${{ steps.meta.outputs.branch }}
+        COMMIT_MESSAGE: ${{ steps.meta.outputs.title }}
+      run: |
+        set -euo pipefail
+        git checkout -B "$BRANCH"
+        git add -A
+        git -c 'user.name=fohte-bot[bot]' \
+            -c 'user.email=139195068+fohte-bot[bot]@users.noreply.github.com' \
+            commit -m "$COMMIT_MESSAGE"
+        # Branch is recreated from the default branch on each run, so pushing requires force.
+        git push --force origin "$BRANCH"
+
+    - name: Create or update pull request
+      if: steps.diff.outputs.changed == 'true'
+      id: pr
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
+        BRANCH: ${{ steps.meta.outputs.branch }}
+        TITLE: ${{ steps.meta.outputs.title }}
+        BODY: ${{ steps.meta.outputs.body }}
+      run: |
+        set -euo pipefail
+        existing_pr=$(gh pr list --head "$BRANCH" --state open --json url --jq 'map(.url)[0] // ""')
+        if [ -n "$existing_pr" ]; then
+          gh pr edit "$existing_pr" --title "$TITLE" --body "$BODY"
+          echo "url=${existing_pr}" >> "$GITHUB_OUTPUT"
+        else
+          url=$(gh pr create --title "$TITLE" --body "$BODY" --head "$BRANCH")
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+        fi
