@@ -12,14 +12,16 @@ inputs:
   producer-repo:
     description: |
       Producer GitHub repository in `owner/repo` form (e.g.
-      `your-org/producer-repo`). Used to link back to its OpenAPI spec from
-      the pull request body.
+      `your-org/producer-repo`). Drives the sync branch name and the pull
+      request title/body/link — see Outputs.
     required: true
   generate-command:
     description: |
       Shell command that regenerates and formats code from the producer's
       spec. Runs at the repository root after checkout; include any
       toolchain setup (installing dependencies, etc.) the command needs.
+      Written by whoever authors the calling workflow — the same trust level
+      as any other `run:` step, not runtime/external input.
     required: true
   octo-sts-identity:
     description: |
@@ -27,23 +29,6 @@ inputs:
       (`domain: octo-sts.fohte.net`). The federated token needs
       `contents: write` and `pull_requests: write`.
     required: true
-  branch:
-    description: |
-      Branch the sync commit is pushed to. Force-pushed on every run, so the
-      branch always equals the default branch plus the latest sync commit.
-    required: true
-  pr-title:
-    description: |
-      Pull request title, reused as the sync commit's message. Defaults to
-      `chore: sync generated code from <producer-repo> OpenAPI spec`.
-    required: false
-    default: ''
-  pr-body:
-    description: |
-      Pull request body. Defaults to a message linking `producer-repo`'s
-      `openapi.json` on `main`.
-    required: false
-    default: ''
 
 outputs:
   changed:
@@ -72,31 +57,14 @@ runs:
       with:
         token: ${{ steps.octo-sts.outputs.token }}
 
-    - name: Resolve pull request title and body
-      id: pr-meta
-      shell: bash
-      env:
-        PRODUCER_REPO: ${{ inputs.producer-repo }}
-        TITLE: ${{ inputs.pr-title }}
-        BODY: ${{ inputs.pr-body }}
-      run: |
-        set -euo pipefail
-        : "${TITLE:=chore: sync generated code from ${PRODUCER_REPO} OpenAPI spec}"
-        : "${BODY:=Regenerated code from the latest [${PRODUCER_REPO} OpenAPI spec](https://github.com/${PRODUCER_REPO}/blob/main/openapi.json).}"
-        delimiter="EOF_$(openssl rand -hex 8)"
-        {
-          echo "title<<${delimiter}"
-          echo "${TITLE}"
-          echo "${delimiter}"
-          echo "body<<${delimiter}"
-          echo "${BODY}"
-          echo "${delimiter}"
-        } >> "$GITHUB_OUTPUT"
-
     - name: Run generate command
       shell: bash
       env:
-        # env avoids injecting the command text directly into the script.
+        # generate-command is the calling workflow's own config, not
+        # runtime/external data -- eval here has the same trust boundary as
+        # any other `run:` step. Passed through env, not interpolated
+        # directly into the script, so the command text can't break out of
+        # the script source.
         GENERATE_COMMAND: ${{ inputs.generate-command }}
       run: eval "$GENERATE_COMMAND"
 
@@ -115,8 +83,11 @@ runs:
       if: steps.diff.outputs.changed == 'true'
       shell: bash
       env:
-        BRANCH: ${{ inputs.branch }}
-        COMMIT_MESSAGE: ${{ steps.pr-meta.outputs.title }}
+        # One sync branch per producer, so a repeat run reuses (and a
+        # `gh pr list --head` below can find) the same branch and PR instead
+        # of piling up a new one every time.
+        BRANCH: spec-sync/${{ inputs.producer-repo }}
+        COMMIT_MESSAGE: 'chore: sync generated code from ${{ inputs.producer-repo }} OpenAPI spec'
       run: |
         set -euo pipefail
         git checkout -B "$BRANCH"
@@ -124,7 +95,10 @@ runs:
         git -c 'user.name=fohte-bot[bot]' \
             -c 'user.email=139195068+fohte-bot[bot]@users.noreply.github.com' \
             commit -m "$COMMIT_MESSAGE"
-        # Force-push keeps the branch at exactly one commit per sync.
+        # `git checkout -B` above resets $BRANCH to the default branch's
+        # current tip on every run, so this commit shares no history with
+        # whatever $BRANCH pointed to last time. A non-force push would be
+        # rejected as non-fast-forward on every run after the first.
         git push --force origin "$BRANCH"
 
     - name: Create or update pull request
@@ -133,9 +107,9 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
-        BRANCH: ${{ inputs.branch }}
-        TITLE: ${{ steps.pr-meta.outputs.title }}
-        BODY: ${{ steps.pr-meta.outputs.body }}
+        BRANCH: spec-sync/${{ inputs.producer-repo }}
+        TITLE: 'chore: sync generated code from ${{ inputs.producer-repo }} OpenAPI spec'
+        BODY: 'Regenerated code from the latest [${{ inputs.producer-repo }} OpenAPI spec](https://github.com/${{ inputs.producer-repo }}/blob/main/openapi.json).'
       run: |
         set -euo pipefail
         existing_pr=$(gh pr list --head "$BRANCH" --state open --json url --jq 'map(.url)[0] // ""')

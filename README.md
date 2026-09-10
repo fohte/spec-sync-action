@@ -10,19 +10,17 @@ This action covers that common part — token federation, checkout, diff detecti
 
 ## Inputs
 
-| name                | required | default | description                                                                                                                  |
-| ------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `producer-repo`     | yes      | —       | Producer repo in `owner/repo` form. Used to link its `openapi.json` from the pull request body.                              |
-| `generate-command`  | yes      | —       | Shell command that regenerates and formats code. Runs at the repository root; include any toolchain setup it needs.          |
-| `octo-sts-identity` | yes      | —       | octo-sts identity used to federate a token (`domain: octo-sts.fohte.net`) with `contents: write` and `pull_requests: write`. |
-| `branch`            | yes      | —       | Branch the sync commit is force-pushed to.                                                                                   |
-| `pr-title`          | no       | (below) | Pull request title, reused as the sync commit message.                                                                       |
-| `pr-body`           | no       | (below) | Pull request body.                                                                                                           |
+| name                | required | description                                                                                                                  |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `producer-repo`     | yes      | Producer repo in `owner/repo` form. Drives the sync branch name and the pull request title/body/link.                        |
+| `generate-command`  | yes      | Shell command that regenerates and formats code. Runs at the repository root; include any toolchain setup it needs.          |
+| `octo-sts-identity` | yes      | octo-sts identity used to federate a token (`domain: octo-sts.fohte.net`) with `contents: write` and `pull_requests: write`. |
 
-When `pr-title` / `pr-body` are omitted, they default to:
+There's no branch/PR-title/PR-body input: all three are derived from `producer-repo` so a repeat run for the same producer reuses the same branch and pull request instead of any caller having to keep them in sync themselves.
 
-- title: `chore: sync generated code from <producer-repo> OpenAPI spec`
-- body: `Regenerated code from the latest [<producer-repo> OpenAPI spec](https://github.com/<producer-repo>/blob/main/openapi.json).`
+- branch: `spec-sync/<producer-repo>`
+- PR title (and the sync commit message): `chore: sync generated code from <producer-repo> OpenAPI spec`
+- PR body: `Regenerated code from the latest [<producer-repo> OpenAPI spec](https://github.com/<producer-repo>/blob/main/openapi.json).`
 
 ## Outputs
 
@@ -60,7 +58,6 @@ jobs:
             pnpm install --frozen-lockfile
             pnpm run generate:producer-repo-contract
           octo-sts-identity: consumer-repo-sync-producer-repo-spec
-          branch: sync-producer-repo-spec
 ```
 
 ### Caller responsibilities (out of scope for this action)
@@ -74,7 +71,7 @@ jobs:
 
 - **`generate-command` runs with a token that has `contents: write` and `pull_requests: write` on this repo.** Only pass a command you trust; it runs before the diff/commit/push steps with no sandboxing beyond the GitHub Actions runner itself.
 - **The federated token's scope comes from the octo-sts trust policy for `octo-sts-identity`, not from this action.** Review the trust policy in the caller repo to confirm it grants only the permissions this action needs.
-- **`git push --force` unconditionally overwrites `branch`.** Don't reuse a branch name that anything else pushes to.
+- **`git push --force` unconditionally overwrites the `spec-sync/<producer-repo>` branch.** This is required, not incidental: the branch is rebuilt from the default branch's current tip on every run (so a stale PR never lingers behind a moved-forward default branch), which means it shares no history with its previous push and a non-force push would be rejected as non-fast-forward. Don't push to that branch from anywhere else.
 
 ## Development
 

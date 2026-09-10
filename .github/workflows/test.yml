@@ -94,7 +94,6 @@ jobs:
           producer-repo: octocat/Hello-World
           generate-command: 'true'
           octo-sts-identity: ${{ github.event.repository.name }}
-          branch: spec-sync-action-smoke-test
 
       - name: Verify the no-op run reports no changes
         env:
