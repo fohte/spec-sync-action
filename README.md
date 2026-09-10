@@ -18,7 +18,7 @@ This action covers that common part — token federation, checkout, diff detecti
 
 There's no branch/PR-title/PR-body input: all three are derived from `producer-repo` so a repeat run for the same producer reuses the same branch and pull request instead of any caller having to keep them in sync themselves.
 
-- branch: `spec-sync/<producer-repo>`
+- branch: `spec-sync-<owner>-<repo>` (`producer-repo`'s `/` replaced with `-`, so it's a valid git ref)
 - PR title (and the sync commit message): `chore: sync generated code from <producer-repo> OpenAPI spec`
 - PR body: `Regenerated code from the latest [<producer-repo> OpenAPI spec](https://github.com/<producer-repo>/blob/main/openapi.json).`
 
@@ -71,7 +71,7 @@ jobs:
 
 - **`generate-command` runs with a token that has `contents: write` and `pull_requests: write` on this repo.** Only pass a command you trust; it runs before the diff/commit/push steps with no sandboxing beyond the GitHub Actions runner itself.
 - **The federated token's scope comes from the octo-sts trust policy for `octo-sts-identity`, not from this action.** Review the trust policy in the caller repo to confirm it grants only the permissions this action needs.
-- **`git push --force` unconditionally overwrites the `spec-sync/<producer-repo>` branch.** This is required, not incidental: the branch is rebuilt from the default branch's current tip on every run (so a stale PR never lingers behind a moved-forward default branch), which means it shares no history with its previous push and a non-force push would be rejected as non-fast-forward. Don't push to that branch from anywhere else.
+- **`git push --force` unconditionally overwrites the `spec-sync-<owner>-<repo>` branch.** This is required, not incidental: the branch is rebuilt from the default branch's current tip on every run (so a stale PR never lingers behind a moved-forward default branch), which means it shares no history with its previous push and a non-force push would be rejected as non-fast-forward. Don't push to that branch from anywhere else.
 
 ## Development
 
