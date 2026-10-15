@@ -23,7 +23,7 @@ There's no branch/PR-title/PR-body input: all three are derived from `producer-r
 - PR title (and the sync commit message): `chore: sync generated code from <producer-repo> OpenAPI spec`
 - PR body: `Regenerated code from the latest [<producer-repo> OpenAPI spec](https://github.com/<producer-repo>/blob/main/openapi.json).`
 
-When `auto-merge` is `true`, GitHub squash-merges the generated pull request after the base repository's requirements, such as required status checks, pass. The base repository must allow auto-merge and squash merging.
+When `auto-merge` is `true`, GitHub squash-merges the generated pull request after the base repository's requirements, such as required status checks, pass. The base repository must allow auto-merge and squash merging. Otherwise, the job fails after creating or updating the pull request.
 
 ## Outputs
 
