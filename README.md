@@ -79,4 +79,4 @@ jobs:
 
 ## Development
 
-This is a composite (bash) action — no build step. Checked by the same hooks as the rest of the repo (`lefthook run pre-commit --all-files`): `pinact` for pinned `uses:` refs and `prettier` for YAML formatting. A smoke-test job in `.github/workflows/test.yml` runs the action against itself on every push.
+This is a composite (bash) action — no build step. Checked by the same hooks as the rest of the repo (`lefthook run pre-commit --all-files`): `pinact` for pinned `uses:` refs and `prettier` for YAML formatting. A smoke-test job in `.github/workflows/test.yml` runs the action against itself on every push. The workflow also runs `bash scripts/test-create-or-update-pr.sh` to test pull request create, update, and auto-merge behavior with a stubbed `gh` command.
