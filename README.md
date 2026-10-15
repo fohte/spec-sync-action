@@ -15,12 +15,15 @@ This action covers that common part — token federation, checkout, diff detecti
 | `producer-repo`     | yes      | Producer repo in `owner/repo` form. Drives the sync branch name and the pull request title/body/link.                        |
 | `generate-command`  | yes      | Shell command that regenerates and formats code. Runs at the repository root; include any toolchain setup it needs.          |
 | `octo-sts-identity` | yes      | octo-sts identity used to federate a token (`domain: octo-sts.fohte.net`) with `contents: write` and `pull_requests: write`. |
+| `auto-merge`        | no       | Defaults to `false`. Set to `true` to enable squash auto-merge after the pull request is created or updated.                 |
 
 There's no branch/PR-title/PR-body input: all three are derived from `producer-repo` so a repeat run for the same producer reuses the same branch and pull request instead of any caller having to keep them in sync themselves.
 
 - branch: `spec-sync-<owner>-<repo>` (`producer-repo`'s `/` replaced with `-`, so it's a valid git ref)
 - PR title (and the sync commit message): `chore: sync generated code from <producer-repo> OpenAPI spec`
 - PR body: `Regenerated code from the latest [<producer-repo> OpenAPI spec](https://github.com/<producer-repo>/blob/main/openapi.json).`
+
+When `auto-merge` is `true`, GitHub squash-merges the generated pull request after the base repository's requirements, such as required status checks, pass. The base repository must allow auto-merge and squash merging. If a generated diff causes the pull-request step to run and either requirement is unavailable, the job fails after creating or updating the pull request.
 
 ## Outputs
 
@@ -58,6 +61,7 @@ jobs:
             pnpm install --frozen-lockfile
             pnpm run generate:producer-repo-contract
           octo-sts-identity: consumer-repo-sync-producer-repo-spec
+          auto-merge: true
 ```
 
 ### Caller responsibilities (out of scope for this action)
@@ -75,4 +79,4 @@ jobs:
 
 ## Development
 
-This is a composite (bash) action — no build step. Checked by the same hooks as the rest of the repo (`lefthook run pre-commit --all-files`): `pinact` for pinned `uses:` refs and `prettier` for YAML formatting. A smoke-test job in `.github/workflows/test.yml` runs the action against itself on every push.
+This is a composite (bash) action — no build step. Checked by the same hooks as the rest of the repo (`lefthook run pre-commit --all-files`): `pinact` for pinned `uses:` refs and `prettier` for YAML formatting. A smoke-test job in `.github/workflows/test.yml` runs the action against itself on every push. The workflow also runs `bash scripts/test-create-or-update-pr.sh` to test pull request create, update, and auto-merge behavior with a stubbed `gh` command.
