@@ -12,5 +12,5 @@ fi
 echo "url=${url}" >> "$GITHUB_OUTPUT"
 
 if [[ "$AUTO_MERGE" == 'true' ]]; then
-  gh pr merge "$url" --auto
+  gh pr merge "$url" --squash --auto
 fi

@@ -42,14 +42,14 @@ assert_no_merge() {
 : > "$GH_CALL_LOG"
 export GITHUB_OUTPUT="$test_dir/new-pr-output"
 GH_EXISTING_PR='' AUTO_MERGE='true' bash "$script_dir/create-or-update-pr.sh"
-assert_line 'pr merge https://github.com/example/consumer/pull/2 --auto'
+assert_line 'pr merge https://github.com/example/consumer/pull/2 --squash --auto'
 grep -Fxq -- 'url=https://github.com/example/consumer/pull/2' "$GITHUB_OUTPUT"
 
 : > "$GH_CALL_LOG"
 export GITHUB_OUTPUT="$test_dir/existing-pr-output"
 GH_EXISTING_PR='https://github.com/example/consumer/pull/1' AUTO_MERGE='true' bash "$script_dir/create-or-update-pr.sh"
 assert_line 'pr edit https://github.com/example/consumer/pull/1 --title chore: sync generated code from example/service OpenAPI spec --body Regenerated code from the latest example/service OpenAPI spec.'
-assert_line 'pr merge https://github.com/example/consumer/pull/1 --auto'
+assert_line 'pr merge https://github.com/example/consumer/pull/1 --squash --auto'
 grep -Fxq -- 'url=https://github.com/example/consumer/pull/1' "$GITHUB_OUTPUT"
 
 : > "$GH_CALL_LOG"

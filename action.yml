@@ -31,7 +31,7 @@ inputs:
     required: true
   auto-merge:
     description: |
-      Enable GitHub auto-merge for generated pull requests. GitHub merges the
+      Enable squash auto-merge for generated pull requests. GitHub merges the
       pull request after the base repository's requirements pass.
     required: false
     default: 'false'
